@@ -118,8 +118,7 @@ disagreement.
 - **Symlinks are never followed** by the walk, and a symlinked directory is
   reported as a file.
 - **A `.gitignore` that is itself a symlink is not read**, matching git 2.32
-  and later. A symlinked `.git/info/exclude` (or `core.excludesFile`) is still
-  followed, as in git.
+  and later. A symlinked `.git/info/exclude` is still followed, as in git.
 - **Nested repository excludes are honoured**, which is a deliberate divergence:
   git run above a nested repository reads only the outermost
   `.git/info/exclude`, while a matcher rooted above several repositories reads
