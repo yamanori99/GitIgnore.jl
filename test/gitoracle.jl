@@ -32,6 +32,19 @@ function available()
     end
 end
 
+# Whether the host lets this process create a symlink, without leaving debris.
+function symlinks_permitted()
+    probe = mktempdir()
+    try
+        symlink("target", joinpath(probe, "link"))
+        return true
+    catch
+        return false
+    finally
+        rm(probe, recursive = true, force = true)
+    end
+end
+
 version() = GIT === nothing ? "absent" :
     strip(read(setenv(`$(GIT) --version`, gitenv()), String))
 

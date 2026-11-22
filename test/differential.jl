@@ -179,7 +179,64 @@ const FIXTURES = Pair{String, Function}[
         mkpath(joinpath(dir, "level", "build", "deep"))
         return write(joinpath(dir, "level", "build", "deep", "x.o"), "x")
     end,
+    "a symlinked .gitignore is not applied" => function (dir)
+        write(joinpath(dir, "rules.txt"), "*.log\n")
+        symlink("rules.txt", joinpath(dir, ".gitignore"))
+        write(joinpath(dir, "a.log"), "x")
+        write(joinpath(dir, "b.txt"), "x")
+        return
+    end,
+    "a symlinked .git/info/exclude is honored" => function (dir)
+        mkpath(joinpath(dir, ".git", "info"))
+        write(joinpath(dir, "rules.txt"), "*.bak\n")
+        rm(joinpath(dir, ".git", "info", "exclude"); force = true)
+        symlink("../../rules.txt", joinpath(dir, ".git", "info", "exclude"))
+        write(joinpath(dir, "keep.txt"), "x")
+        return write(joinpath(dir, "notes.bak"), "x")
+    end,
+    "a symlinked .git/info/exclude with an absolute target is honored" =>
+        function (dir)
+        mkpath(joinpath(dir, ".git", "info"))
+        target = joinpath(dir, "rules.txt")
+        write(target, "*.bak\n")
+        rm(joinpath(dir, ".git", "info", "exclude"); force = true)
+        symlink(target, joinpath(dir, ".git", "info", "exclude"))
+        write(joinpath(dir, "keep.txt"), "x")
+        return write(joinpath(dir, "notes.bak"), "x")
+    end,
+    "a dangling exclude symlink is silent" => function (dir)
+        mkpath(joinpath(dir, ".git", "info"))
+        rm(joinpath(dir, ".git", "info", "exclude"); force = true)
+        symlink(joinpath(dir, "absent"), joinpath(dir, ".git", "info", "exclude"))
+        write(joinpath(dir, "notes.bak"), "x")
+        return write(joinpath(dir, "keep.txt"), "x")
+    end,
+    "a nested symlinked .gitignore is not applied" => function (dir)
+        mkpath(joinpath(dir, "sub"))
+        write(joinpath(dir, "rules.txt"), "*.log\n")
+        symlink("../rules.txt", joinpath(dir, "sub", ".gitignore"))
+        write(joinpath(dir, "root.log"), "x")
+        write(joinpath(dir, "sub", "a.log"), "x")
+        return write(joinpath(dir, "sub", "b.txt"), "x")
+    end,
+    "a dangling symlinked .gitignore is not applied" => function (dir)
+        symlink(joinpath(dir, "absent"), joinpath(dir, ".gitignore"))
+        write(joinpath(dir, "would.log"), "x")
+        return write(joinpath(dir, "plain.txt"), "x")
+    end,
 ]
+
+const SYMLINK_FIXTURES = Set(
+    [
+        "symlinks are files however they resolve",
+        "a symlinked .gitignore is not applied",
+        "a symlinked .git/info/exclude is honored",
+        "a symlinked .git/info/exclude with an absolute target is honored",
+        "a dangling exclude symlink is silent",
+        "a nested symlinked .gitignore is not applied",
+        "a dangling symlinked .gitignore is not applied",
+    ]
+)
 
 # Patterns worth checking one at a time against the tree below. Anything whose
 # git behaviour is not obvious from the manual page belongs here.
@@ -256,6 +313,8 @@ end
 
         for (name, build) in FIXTURES
             @testset "$name" begin
+                name in SYMLINK_FIXTURES && !GitOracle.symlinks_permitted() &&
+                    @test_skip "symlink() not permitted on this host"
                 GitOracle.withrepo() do repo
                     build(repo)
                     @test GitOracle.disagreements(repo) == String[]

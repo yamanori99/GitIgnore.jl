@@ -259,3 +259,53 @@ end
         @test isignored(without, "lib/util.o")
     end
 end
+
+@testset "a symlinked .gitignore is not applied" begin
+    symlink_ok = try
+        mktempdir() do probe
+            symlink("t", joinpath(probe, "l"))
+            true
+        end
+    catch
+        false
+    end
+    symlink_ok || @test_skip "symlink() not permitted on this host"
+    mktempdir() do dir
+        write(joinpath(dir, "rules.txt"), "*.log\n")
+        symlink("rules.txt", joinpath(dir, ".gitignore"))
+        write(joinpath(dir, "a.log"), "x")
+        write(joinpath(dir, "b.txt"), "x")
+        matcher = IgnoreMatcher(dir)
+        @test_logs (:warn, r"unable to access \"\.gitignore\": Too many levels of symbolic links") begin
+            @test !isignored(matcher, "a.log")
+        end
+        @test !isignored(matcher, "b.txt")
+    end
+end
+
+@testset "a .gitignore in an untraversable directory does not throw" begin
+    if !(Sys.isunix() && Libc.getuid() != 0)
+        @info "an untraversable directory is skipped: chmod is not effective " *
+            "here, so this run proves nothing about it"
+        return
+    end
+    mktempdir() do dir
+        locked = joinpath(dir, "sub")
+        mkpath(locked)
+        write(joinpath(locked, ".gitignore"), "*.log\n")
+        write(joinpath(locked, "a.log"), "x")
+        # Listable but not traversable, so the symlink probe's lstat is refused.
+        chmod(locked, 0o600)
+        try
+            @test !isignored(IgnoreMatcher(dir), "sub/a.log", false)
+            seen = String[]
+            walkfiltered(IgnoreMatcher(dir)) do root, dirs, files
+                append!(seen, files)
+                return true
+            end
+            @test "a.log" in seen
+        finally
+            chmod(locked, 0o755)
+        end
+    end
+end
