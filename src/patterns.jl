@@ -369,7 +369,10 @@ function load_ignore_patterns(path::AbstractString, prefix::AbstractString)
         # `isfile` and the read are both inside the guard: a directory the
         # process cannot traverse makes even the stat throw EACCES.
         isfile(path) ? read(path, String) : nothing
-    catch
+    catch err
+        if err isa Base.IOError || err isa SystemError
+            @warn "unable to access $(repr(path)): $(sprint(showerror, err))"
+        end
         nothing
     end
     content === nothing && return nothing

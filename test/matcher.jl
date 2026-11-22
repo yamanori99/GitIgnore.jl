@@ -259,3 +259,26 @@ end
         @test isignored(without, "lib/util.o")
     end
 end
+
+@testset "an unreadable .gitignore warns and is not applied" begin
+    if !(Sys.isunix() && Libc.getuid() != 0)
+        @info "an unreadable .gitignore is skipped: chmod 000 is not effective " *
+            "here, so this run proves nothing about that file"
+        return
+    end
+    mktempdir() do dir
+        write(joinpath(dir, ".gitignore"), "*.log\n")
+        write(joinpath(dir, "a.log"), "x")
+        write(joinpath(dir, "b.txt"), "x")
+        chmod(joinpath(dir, ".gitignore"), 0o000)
+        matcher = IgnoreMatcher(dir)
+        try
+            @test_logs (:warn, r"Permission denied") begin
+                @test !isignored(matcher, "a.log")
+            end
+            @test !isignored(matcher, "b.txt")
+        finally
+            chmod(joinpath(dir, ".gitignore"), 0o644)
+        end
+    end
+end

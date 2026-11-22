@@ -179,6 +179,13 @@ const FIXTURES = Pair{String, Function}[
         mkpath(joinpath(dir, "level", "build", "deep"))
         return write(joinpath(dir, "level", "build", "deep", "x.o"), "x")
     end,
+    "an unreadable .gitignore is not applied" => function (dir)
+        write(joinpath(dir, ".gitignore"), "*.log\n")
+        write(joinpath(dir, "a.log"), "x")
+        write(joinpath(dir, "b.txt"), "x")
+        chmod(joinpath(dir, ".gitignore"), 0o000)
+        return
+    end,
 ]
 
 # Patterns worth checking one at a time against the tree below. Anything whose
@@ -255,6 +262,12 @@ end
         @info "differential suite oracle: $(GitOracle.version())"
 
         for (name, build) in FIXTURES
+            if name == "an unreadable .gitignore is not applied" &&
+                    (!Sys.isunix() || Libc.getuid() == 0)
+                @info "an unreadable .gitignore is skipped: chmod 000 is not effective " *
+                    "here, so this run proves nothing about that file"
+                continue
+            end
             @testset "$name" begin
                 GitOracle.withrepo() do repo
                     build(repo)
