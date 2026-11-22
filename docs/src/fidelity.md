@@ -117,6 +117,8 @@ disagreement.
   files. `[[:digit:]]` and the rest of the POSIX classes work.
 - **Symlinks are never followed** by the walk, and a symlinked directory is
   reported as a file.
+- **A `.gitignore` or `.git/info/exclude` that is itself a symlink is not
+  read**, matching git 2.32 and later.
 - **Nested repository excludes are honoured**, which is a deliberate divergence:
   git run above a nested repository reads only the outermost
   `.git/info/exclude`, while a matcher rooted above several repositories reads

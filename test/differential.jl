@@ -179,6 +179,13 @@ const FIXTURES = Pair{String, Function}[
         mkpath(joinpath(dir, "level", "build", "deep"))
         return write(joinpath(dir, "level", "build", "deep", "x.o"), "x")
     end,
+    "a symlinked .gitignore is not applied" => function (dir)
+        write(joinpath(dir, "rules.txt"), "*.log\n")
+        symlink("rules.txt", joinpath(dir, ".gitignore"))
+        write(joinpath(dir, "a.log"), "x")
+        write(joinpath(dir, "b.txt"), "x")
+        return
+    end,
 ]
 
 # Patterns worth checking one at a time against the tree below. Anything whose

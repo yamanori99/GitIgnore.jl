@@ -365,6 +365,10 @@ function parse_ignore_file(content::AbstractString, prefix::AbstractString)
 end
 
 function load_ignore_patterns(path::AbstractString, prefix::AbstractString)
+    if islink(path)
+        @warn "unable to access $(repr(path)): Too many levels of symbolic links"
+        return nothing
+    end
     content = try
         # `isfile` and the read are both inside the guard: a directory the
         # process cannot traverse makes even the stat throw EACCES.

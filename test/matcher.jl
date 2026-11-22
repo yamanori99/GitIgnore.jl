@@ -259,3 +259,17 @@ end
         @test isignored(without, "lib/util.o")
     end
 end
+
+@testset "a symlinked .gitignore is not applied" begin
+    mktempdir() do dir
+        write(joinpath(dir, "rules.txt"), "*.log\n")
+        symlink("rules.txt", joinpath(dir, ".gitignore"))
+        write(joinpath(dir, "a.log"), "x")
+        write(joinpath(dir, "b.txt"), "x")
+        matcher = IgnoreMatcher(dir)
+        @test_logs (:warn, r"Too many levels of symbolic links") begin
+            @test !isignored(matcher, "a.log")
+        end
+        @test !isignored(matcher, "b.txt")
+    end
+end
