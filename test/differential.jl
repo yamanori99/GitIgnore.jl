@@ -3,6 +3,16 @@ using GitIgnore
 
 include("gitoracle.jl")
 
+# A fixture that proves nothing on some hosts. `runs` says whether this host can
+# lay it out faithfully, and `reason` is what the log says when it cannot.
+struct HostFixture <: Function
+    runs::Bool
+    reason::String
+    build::Function
+end
+
+(fixture::HostFixture)(dir) = fixture.build(dir)
+
 # Fixtures for the differential suite. Each lays out a tree and its ignore files;
 # the harness then asks this package and `git check-ignore` about every path in
 # it and fails on any disagreement.
@@ -179,6 +189,16 @@ const FIXTURES = Pair{String, Function}[
         mkpath(joinpath(dir, "level", "build", "deep"))
         return write(joinpath(dir, "level", "build", "deep", "x.o"), "x")
     end,
+    "an unreadable .gitignore is not applied" => HostFixture(
+        Sys.isunix() && Libc.getuid() != 0, "chmod 000 is not effective here",
+        function (dir)
+            write(joinpath(dir, ".gitignore"), "*.log\n")
+            write(joinpath(dir, "a.log"), "x")
+            write(joinpath(dir, "b.txt"), "x")
+            chmod(joinpath(dir, ".gitignore"), 0o000)
+            return
+        end
+    ),
 ]
 
 # Patterns worth checking one at a time against the tree below. Anything whose
@@ -255,6 +275,11 @@ end
         @info "differential suite oracle: $(GitOracle.version())"
 
         for (name, build) in FIXTURES
+            if build isa HostFixture && !build.runs
+                @info "$name is skipped: $(build.reason), " *
+                    "so this run proves nothing about it"
+                continue
+            end
             @testset "$name" begin
                 GitOracle.withrepo() do repo
                     build(repo)

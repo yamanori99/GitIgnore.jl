@@ -364,17 +364,45 @@ function parse_ignore_file(content::AbstractString, prefix::AbstractString)
     )
 end
 
-function load_ignore_patterns(path::AbstractString, prefix::AbstractString)
+function load_ignore_patterns(
+        path::AbstractString, prefix::AbstractString;
+        warn_relpath::Union{Nothing, AbstractString} = nothing,
+    )
     content = try
         # `isfile` and the read are both inside the guard: a directory the
         # process cannot traverse makes even the stat throw EACCES.
         isfile(path) ? read(path, String) : nothing
-    catch
+    catch err
+        err isa Base.IOError || err isa SystemError || rethrow()
+        display = something(warn_relpath, path)
+        @warn "unable to access $(repr(display)): $(access_reason(err))"
         nothing
     end
     content === nothing && return nothing
     return parse_ignore_file(content, prefix)
 end
+
+# Why a read failed, in strerror's words as git prints them: Julia's own rendering
+# names the call and repeats the path. libuv reports a negated errno except on
+# Windows, where its codes have no errno to name.
+access_reason(err::SystemError) = Libc.strerror(err.errnum)
+access_reason(err::Base.IOError) = Sys.iswindows() ? err.msg : Libc.strerror(-err.code)
+
+# Whether `dir` holds a `.git` directory to read excludes from. A `dir` the process
+# cannot traverse answers false without a warning: git finds no repository there,
+# and the warning git does give is the one its `.gitignore` already raises.
+function has_gitdir(dir::AbstractString)
+    return try
+        isdir(joinpath(dir, ".git"))
+    catch err
+        err isa Base.IOError || rethrow()
+        false
+    end
+end
+
+# A file `dir` declares, named relative to the matcher root the way git names it.
+declared_relpath(prefix::AbstractString, name::AbstractString) =
+    isempty(prefix) ? name : "$(prefix)/$(name)"
 
 """
     load_dir_rules(dir, prefix; excludes=true, gitdir=true, ignorefile=true)
@@ -396,12 +424,18 @@ function load_dir_rules(
         ignorefile::Bool = true
     )
     rules = IgnoreRules[]
-    if excludes && gitdir
-        found = load_ignore_patterns(joinpath(dir, GIT_EXCLUDE_PATH...), prefix)
+    if excludes && gitdir && has_gitdir(dir)
+        found = load_ignore_patterns(
+            joinpath(dir, GIT_EXCLUDE_PATH...), prefix;
+            warn_relpath = declared_relpath(prefix, join(GIT_EXCLUDE_PATH, '/')),
+        )
         found === nothing || push!(rules, found)
     end
     if ignorefile
-        found = load_ignore_patterns(joinpath(dir, IGNORE_FILE_NAME), prefix)
+        found = load_ignore_patterns(
+            joinpath(dir, IGNORE_FILE_NAME), prefix;
+            warn_relpath = declared_relpath(prefix, IGNORE_FILE_NAME),
+        )
         found === nothing || push!(rules, found)
     end
     return rules

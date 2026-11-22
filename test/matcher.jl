@@ -259,3 +259,68 @@ end
         @test isignored(without, "lib/util.o")
     end
 end
+
+# chmod 000 denies nothing to root and means nothing on Windows.
+const CHMOD_EFFECTIVE = Sys.isunix() && Libc.getuid() != 0
+
+@testset "an unreadable ignore file warns and is not applied" begin
+    if !CHMOD_EFFECTIVE
+        @info "an unreadable ignore file is skipped: chmod 000 is not effective " *
+            "here, so this run proves nothing about it"
+        return
+    end
+    mktempdir() do dir
+        write(joinpath(dir, ".gitignore"), "*.log\n")
+        mkpath(joinpath(dir, ".git", "info"))
+        write(joinpath(dir, ".git", "info", "exclude"), "*.tmp\n")
+        for name in ("a.log", "b.txt", "c.tmp")
+            write(joinpath(dir, name), "x")
+        end
+        chmod(joinpath(dir, ".gitignore"), 0o000)
+        chmod(joinpath(dir, ".git", "info", "exclude"), 0o000)
+        matcher = IgnoreMatcher(dir)
+        try
+            # The path is the one git prints, relative to the root, and appears once.
+            @test_logs (:warn, "unable to access \".git/info/exclude\": Permission denied") (
+                :warn, "unable to access \".gitignore\": Permission denied",
+            ) begin
+                @test !isignored(matcher, "a.log")
+            end
+            @test !isignored(matcher, "b.txt")
+            @test !isignored(matcher, "c.tmp")
+        finally
+            chmod(joinpath(dir, ".gitignore"), 0o644)
+            chmod(joinpath(dir, ".git", "info", "exclude"), 0o644)
+        end
+    end
+end
+
+@testset "an untraversable directory warns only for its .gitignore" begin
+    if !CHMOD_EFFECTIVE
+        @info "an untraversable directory is skipped: chmod is not effective " *
+            "here, so this run proves nothing about it"
+        return
+    end
+    mktempdir() do dir
+        locked = joinpath(dir, "sub")
+        mkpath(locked)
+        write(joinpath(locked, ".gitignore"), "*.log\n")
+        write(joinpath(locked, "a.log"), "x")
+        # Listable but not traversable: git warns about `sub/.gitignore` and
+        # nothing else, and has no repository there whose excludes it could miss.
+        chmod(locked, 0o600)
+        matcher = IgnoreMatcher(dir)
+        try
+            @test_logs (:warn, "unable to access \"sub/.gitignore\": Permission denied") begin
+                @test !isignored(matcher, "sub/a.log", false)
+            end
+        finally
+            chmod(locked, 0o755)
+        end
+    end
+end
+
+@testset "a failure that is not an I/O error is not swallowed" begin
+    # A NUL cannot name a file, so the stat refuses it before any I/O happens.
+    @test_throws ArgumentError GitIgnore.load_ignore_patterns("bad\0name", "")
+end
