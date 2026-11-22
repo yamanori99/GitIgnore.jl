@@ -364,12 +364,24 @@ function parse_ignore_file(content::AbstractString, prefix::AbstractString)
     )
 end
 
+# Whether `path` is a symlink. A directory the process cannot traverse makes even
+# the lstat throw EACCES; that answers false here, and the read that follows meets
+# the same error inside its own guard.
+function probe_islink(path::AbstractString)
+    return try
+        islink(path)
+    catch err
+        err isa Base.IOError || rethrow()
+        false
+    end
+end
+
 function load_ignore_patterns(
         path::AbstractString, prefix::AbstractString;
         refuse_symlinks::Bool = false,
         warn_relpath::Union{Nothing, AbstractString} = nothing,
     )
-    if refuse_symlinks && islink(path)
+    if refuse_symlinks && probe_islink(path)
         display = something(warn_relpath, path)
         @warn "unable to access $(repr(display)): Too many levels of symbolic links"
         return nothing
