@@ -261,13 +261,22 @@ end
 end
 
 @testset "a symlinked .gitignore is not applied" begin
+    symlink_ok = try
+        mktempdir() do probe
+            symlink("t", joinpath(probe, "l"))
+            true
+        end
+    catch
+        false
+    end
+    symlink_ok || @test_skip "symlink() not permitted on this host"
     mktempdir() do dir
         write(joinpath(dir, "rules.txt"), "*.log\n")
         symlink("rules.txt", joinpath(dir, ".gitignore"))
         write(joinpath(dir, "a.log"), "x")
         write(joinpath(dir, "b.txt"), "x")
         matcher = IgnoreMatcher(dir)
-        @test_logs (:warn, r"Too many levels of symbolic links") begin
+        @test_logs (:warn, r"unable to access \"\.gitignore\": Too many levels of symbolic links") begin
             @test !isignored(matcher, "a.log")
         end
         @test !isignored(matcher, "b.txt")

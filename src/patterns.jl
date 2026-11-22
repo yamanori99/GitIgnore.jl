@@ -364,9 +364,14 @@ function parse_ignore_file(content::AbstractString, prefix::AbstractString)
     )
 end
 
-function load_ignore_patterns(path::AbstractString, prefix::AbstractString)
-    if islink(path)
-        @warn "unable to access $(repr(path)): Too many levels of symbolic links"
+function load_ignore_patterns(
+        path::AbstractString, prefix::AbstractString;
+        refuse_symlinks::Bool = false,
+        warn_relpath::Union{Nothing, AbstractString} = nothing,
+    )
+    if refuse_symlinks && islink(path)
+        display = something(warn_relpath, path)
+        @warn "unable to access $(repr(display)): Too many levels of symbolic links"
         return nothing
     end
     content = try
@@ -405,7 +410,12 @@ function load_dir_rules(
         found === nothing || push!(rules, found)
     end
     if ignorefile
-        found = load_ignore_patterns(joinpath(dir, IGNORE_FILE_NAME), prefix)
+        warn_relpath = isempty(prefix) ? IGNORE_FILE_NAME :
+            "$(prefix)/$(IGNORE_FILE_NAME)"
+        found = load_ignore_patterns(
+            joinpath(dir, IGNORE_FILE_NAME), prefix;
+            refuse_symlinks = true, warn_relpath,
+        )
         found === nothing || push!(rules, found)
     end
     return rules
